@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guided Filter Studio</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-color: #1e1e1e;
+            --text-color: #e0e0e0;
+            --accent-color: #007bff;
+            --accent-hover: #0056b3;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 300px;
+            background-color: var(--panel-color);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        h1 { font-size: 1.5rem; margin-bottom: 20px; color: var(--accent-color); }
+
+        .control-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 0.9rem;}
+        
+        /* Стилізація повзунків */
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+        
+        .value-display {
+            float: right;
+            color: var(--accent-color);
+            font-size: 0.9rem;
+        }
+
+        /* Кнопки */
+        .btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.2s;
+            margin-top: 10px;
+            width: 100%;
+        }
+        .btn:hover { background-color: var(--accent-hover); }
+        .btn:disabled { background-color: #555; cursor: not-allowed; }
+
+        input[type="file"] { margin-bottom: 20px; }
+
+        /* Основна область перегляду */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            background-image: radial-gradient(#2a2a2a 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .image-container {
+            display: flex;
+            gap: 20px;
+            max-width: 95%;
+            max-height: 90%;
+        }
+
+        .img-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .img-box img {
+            max-width: 100%;
+            max-height: 80vh;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            border: 1px solid #333;
+        }
+
+        .img-label { margin-top: 10px; color: #888; }
+
+        /* Лоадер */
+        .loader {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            border: 4px solid #333;
+            border-top: 4px solid var(--accent-color);
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h1>Guided Filter    </h1>
+        
+        <div class="control-group">
+            <label>Оберіть зображення</label>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <label>Radius (Розмір плями) <span class="value-display" id="val-radius">30</span></label>
+            <input type="range" id="radius" min="1" max="100" value="30" oninput="updateVal('radius')">
+        </div>
+
+        <div class="control-group">
+            <label>Epsilon (Чутливість) <span class="value-display" id="val-eps">0.05</span></label>
+            <input type="range" id="eps" min="0.001" max="0.5" step="0.001" value="0.05" oninput="updateVal('eps')">
+        </div>
+
+        <div class="control-group">
+            <label>Boost (Деталізація) <span class="value-display" id="val-boost">5.0</span></label>
+            <input type="range" id="boost" min="0" max="20" step="0.5" value="5.0" oninput="updateVal('boost')">
+        </div>
+
+        <button class="btn" onclick="processImage()" id="processBtn">Обробити</button>
+    </div>
+
+    <div class="main-content">
+        <div class="loader" id="loader"></div>
+        
+        <div class="image-container" id="resultsArea" style="display: none;">
+            <div class="img-box">
+                <img id="originalImg" src="" alt="Original">
+                <span class="img-label">Оригінал</span>
+            </div>
+            <div class="img-box">
+                <img id="processedImg" src="" alt="Processed">
+                <span class="img-label">Результат</span>
+            </div>
+        </div>
+        
+        <div id="placeholder" style="color: #555; font-size: 1.2rem;">
+            Завантажте фото та натисніть "Обробити"
+        </div>
+    </div>
+
+    <script>
+        function updateVal(id) {
+            document.getElementById('val-' + id).innerText = document.getElementById(id).value;
+        }
+
+        async function processImage() {
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput.files.length === 0) {
+                alert("Будь ласка, оберіть файл!");
+                return;
+            }
+
+            // UI Updates
+            const btn = document.getElementById('processBtn');
+            const loader = document.getElementById('loader');
+            const resultsArea = document.getElementById('resultsArea');
+            const placeholder = document.getElementById('placeholder');
+
+            btn.disabled = true;
+            btn.innerText = "Обробка...";
+            loader.style.display = 'block';
+            resultsArea.style.display = 'none';
+            placeholder.style.display = 'none';
+
+            // Підготовка даних
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('radius', document.getElementById('radius').value);
+            formData.append('eps', document.getElementById('eps').value);
+            formData.append('boost', document.getElementById('boost').value);
+
+            try {
+                // Відправка запиту на сервер
+                const response = await fetch('/enhance/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error("Помилка сервера");
+
+                const data = await response.json();
+
+                // Відображення результату (додаємо timestamp щоб уникнути кешування браузера)
+                document.getElementById('originalImg').src = data.original_url + "?t=" + new Date().getTime();
+                document.getElementById('processedImg').src = data.url + "?t=" + new Date().getTime();
+                
+                resultsArea.style.display = 'flex';
+
+            } catch (error) {
+                alert("Сталася помилка: " + error.message);
+                placeholder.style.display = 'block';
+                placeholder.innerText = "Помилка обробки";
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Обробити";
+                loader.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
